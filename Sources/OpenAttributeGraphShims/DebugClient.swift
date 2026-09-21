@@ -2,7 +2,7 @@
 //  DebugServerTests.swift
 //  OpenAttributeGraphShims
 
-#if canImport(Darwin)
+#if canImport(Darwin) && canImport(Network)
 public import Foundation
 public import Network
 
