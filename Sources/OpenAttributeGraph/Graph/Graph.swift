@@ -124,7 +124,8 @@ import Foundation
 
 extension Graph {
     public func archiveJSON(name: String?) {
-        #if canImport(Darwin)
+        // Darling's Foundation overlay has no JSONSerialization and no NSDictionary bridging.
+        #if canImport(Darwin) && !OPENATTRIBUTEGRAPH_DARLING
         let options: NSDictionary = [
             DescriptionOption.format: "graph/dict",
             DescriptionOption.includeValues: true,
