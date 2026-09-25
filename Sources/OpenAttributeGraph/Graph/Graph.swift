@@ -13,11 +13,47 @@ extension Graph {
         body: _AttributeBody.Type,
         valueType: Metadata,
         flags: _AttributeType.Flags,
-        update: AttributeUpdateBlock
+        update: @escaping AttributeUpdateBlock
     ) -> Int {
-        // The C++ attribute store uses the value metadata as its type key.
-        Int(bitPattern: valueType.rawValue)
+        let box = GraphRuleType(
+            bodyType: Metadata(body).rawValue,
+            valueType: valueType.rawValue,
+            update: update
+        )
+        // Swift metadata pointers are aligned; bit zero identifies a retained rule type.
+        return Int(bitPattern: Unmanaged.passRetained(box).toOpaque()) | 1
     }
+}
+
+private final class GraphRuleType {
+    let bodyType: UnsafePointer<_Metadata>
+    let valueType: UnsafePointer<_Metadata>
+    let update: AttributeUpdateBlock
+
+    init(bodyType: UnsafePointer<_Metadata>, valueType: UnsafePointer<_Metadata>, update: @escaping AttributeUpdateBlock) {
+        self.bodyType = bodyType
+        self.valueType = valueType
+        self.update = update
+    }
+}
+
+private func graphRuleType(_ index: Int) -> GraphRuleType {
+    Unmanaged<GraphRuleType>.fromOpaque(UnsafeRawPointer(bitPattern: index & ~1)!).takeUnretainedValue()
+}
+
+@_cdecl("OAGSwiftRuleValueMetadata")
+func OAGSwiftRuleValueMetadata(_ index: Int) -> UnsafeRawPointer {
+    UnsafeRawPointer(graphRuleType(index).valueType)
+}
+
+@_cdecl("OAGSwiftRuleBodyMetadata")
+func OAGSwiftRuleBodyMetadata(_ index: Int) -> UnsafeRawPointer {
+    UnsafeRawPointer(graphRuleType(index).bodyType)
+}
+
+@_cdecl("OAGSwiftUpdateRule")
+func OAGSwiftUpdateRule(_ index: Int, _ body: UnsafeMutableRawPointer, _ attribute: UInt32) {
+    graphRuleType(index).update()(body, AnyAttribute(rawValue: attribute))
 }
 
 @_silgen_name("OAGGraphSetInvalidationCallback")

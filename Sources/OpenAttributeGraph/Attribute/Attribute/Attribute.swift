@@ -102,7 +102,7 @@ public struct Attribute<Value> {
         body: UnsafePointer<Body>,
         value: UnsafePointer<Value>?,
         flags: _AttributeType.Flags = [],
-        update: AttributeUpdateBlock
+        update: @escaping AttributeUpdateBlock
     ) {
         #if os(WASI)
         // This is a compiler issue and SwiftWasm toolchain enable the assertation

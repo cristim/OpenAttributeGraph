@@ -13,9 +13,16 @@
 
 const OAGAttribute OAGAttributeNil = OAGAttribute(OAG::AttributeID::Kind::Null);
 
+extern "C" const void *OAGSwiftRuleValueMetadata(long index);
+extern "C" const void *OAGSwiftRuleBodyMetadata(long index);
+extern "C" void OAGSwiftUpdateRule(long index, void *body, OAGAttribute attribute);
+
+namespace {
+thread_local OAGAttribute updatingAttribute = OAGAttributeNil;
+}
+
 OAGAttribute OAGGraphGetCurrentAttribute(void) {
-    // TODO
-    return OAGAttributeNil;
+    return updatingAttribute;
 }
 
 bool OAGGraphCurrentAttributeWasModified(void) {
@@ -29,6 +36,10 @@ struct StoredAttribute {
     const OAG::swift::metadata *type;
     void *storage;
     bool hasValue;
+    long ruleIndex;
+    void *body;
+    const OAG::swift::metadata *bodyType;
+    bool updating;
     StoredAttribute *next;
 };
 
@@ -103,9 +114,24 @@ void OAGGraphMutateAttribute(OAGAttribute attribute,
                             bool invalidating,
                             const void (*function)(const void * _Nullable context OAG_SWIFT_CONTEXT, void *body) OAG_SWIFT_CC(swift),
                             const void * _Nullable context) {
-    const OAG::AttributeID id = OAG::AttributeID(attribute);
-    id.checkIsDirect();
-    // attribute_modify(AG::data::ptr<AG::Node>, AGSwiftMetadata const*, AG::ClosureFunction<void, void*>, bool
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    if (entry == nullptr || entry->body == nullptr ||
+        reinterpret_cast<OAGTypeID>(entry->bodyType) != type) {
+        pthread_mutex_unlock(&attributeLock);
+        return;
+    }
+    // The callback may access other attributes, so release the registry lock.
+    pthread_mutex_unlock(&attributeLock);
+    function(context, entry->body);
+    if (invalidating) {
+        pthread_mutex_lock(&attributeLock);
+        if (entry->hasValue) {
+            entry->type->vw_destroy(reinterpret_cast<swift::OpaqueValue *>(entry->storage));
+            entry->hasValue = false;
+        }
+        pthread_mutex_unlock(&attributeLock);
+    }
 }
 
 OAGAttribute OAGGraphGetIndirectDependency(OAGAttribute attribute) {
@@ -127,7 +153,9 @@ void OAGGraphSetIndirectAttribute(OAGAttribute attribute1, OAGAttribute attribut
 }
 
 OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * value) {
-    auto *type = reinterpret_cast<const OAG::swift::metadata *>(index);
+    const bool isRule = (index & 1) != 0;
+    auto *type = reinterpret_cast<const OAG::swift::metadata *>(
+        isRule ? OAGSwiftRuleValueMetadata(index) : reinterpret_cast<const void *>(index));
     if (type == nullptr) return OAGAttributeNil;
     const auto *witnesses = type->getValueWitnesses();
     const size_t alignment = std::max<size_t>(witnesses->getAlignment(), sizeof(void *));
@@ -140,7 +168,21 @@ OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * 
         type->vw_initializeWithCopy(reinterpret_cast<swift::OpaqueValue *>(storage),
                                     reinterpret_cast<swift::OpaqueValue *>(const_cast<void *>(value)));
     }
-    auto *entry = new StoredAttribute{0, type, storage, value != nullptr, nullptr};
+    void *bodyStorage = nullptr;
+    const OAG::swift::metadata *bodyType = nullptr;
+    if (isRule && body != nullptr) {
+        bodyType = reinterpret_cast<const OAG::swift::metadata *>(OAGSwiftRuleBodyMetadata(index));
+        const auto *bodyWitnesses = bodyType->getValueWitnesses();
+        const size_t bodyAlignment = std::max<size_t>(bodyWitnesses->getAlignment(), sizeof(void *));
+        const size_t bodySize = std::max<size_t>(bodyWitnesses->getStride(), 1);
+        if (posix_memalign(&bodyStorage, bodyAlignment, bodySize) != 0) {
+            OAG::precondition_failure("attribute body allocation failure");
+        }
+        bodyType->vw_initializeWithCopy(reinterpret_cast<swift::OpaqueValue *>(bodyStorage),
+                                         reinterpret_cast<swift::OpaqueValue *>(const_cast<void *>(body)));
+    }
+    auto *entry = new StoredAttribute{0, type, storage, value != nullptr, isRule ? index : 0,
+                                      bodyStorage, bodyType, false, nullptr};
     pthread_mutex_lock(&attributeLock);
     entry->id = nextAttributeID;
     nextAttributeID += 4;
@@ -153,6 +195,21 @@ OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * 
 const OAGValue OAGGraphGetValue(OAGAttribute attribute, OAGValueOptions options, OAGTypeID type) {
     pthread_mutex_lock(&attributeLock);
     auto *entry = findAttribute(attribute);
+    const bool needsUpdate = entry != nullptr && !entry->hasValue &&
+                             entry->ruleIndex != 0 && entry->body != nullptr && !entry->updating;
+    if (needsUpdate) entry->updating = true;
+    pthread_mutex_unlock(&attributeLock);
+    if (needsUpdate) {
+        const OAGAttribute previous = updatingAttribute;
+        updatingAttribute = attribute;
+        OAGSwiftUpdateRule(entry->ruleIndex, entry->body, attribute);
+        updatingAttribute = previous;
+        pthread_mutex_lock(&attributeLock);
+        entry->updating = false;
+        pthread_mutex_unlock(&attributeLock);
+    }
+    pthread_mutex_lock(&attributeLock);
+    entry = findAttribute(attribute);
     const void *value = entry != nullptr && entry->hasValue &&
                         reinterpret_cast<OAGTypeID>(entry->type) == type ? entry->storage : nullptr;
     pthread_mutex_unlock(&attributeLock);
@@ -185,7 +242,9 @@ const void * _Nullable OAGGraphGetOutputValue(OAGTypeID type) {
 }
 
 void OAGGraphSetOutputValue(const void *value, const OAGTypeID type) {
-    // TODO
+    if (updatingAttribute != OAGAttributeNil) {
+        OAGGraphSetValue(updatingAttribute, value, type);
+    }
 }
 
 OAGValueState OAGGraphGetValueState(OAGAttribute attribute) {
