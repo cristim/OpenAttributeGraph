@@ -5,12 +5,14 @@
 #include <OpenAttributeGraph/OAGAttribute.h>
 #include <OpenAttributeGraph/OAGSubgraph.h>
 #include <OpenAttributeGraphCxx/Attribute/AttributeID.hpp>
+#include <OpenAttributeGraphCxx/Graph/Graph.hpp>
 #include <OpenAttributeGraphCxx/Misc/assert.hpp>
 #include <OpenAttributeGraphCxx/Runtime/metadata.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <optional>
 #include <pthread.h>
+#include <vector>
 
 const OAGAttribute OAGAttributeNil = OAGAttribute(OAG::AttributeID::Kind::Null);
 
@@ -66,6 +68,30 @@ StoredAttribute *findAttribute(OAGAttribute id) {
         if (entry->id == id) return entry;
     }
     return nullptr;
+}
+
+// Called with attributeLock held. A changed input makes every cached rule that
+// observed it stale, including rules that depend on those rules transitively.
+void invalidateObservers(StoredAttribute *source) {
+    std::vector<OAGAttribute> pending{source->id};
+    std::vector<OAGAttribute> visited;
+    while (!pending.empty()) {
+        const OAGAttribute id = pending.back();
+        pending.pop_back();
+        if (std::find(visited.begin(), visited.end(), id) != visited.end()) continue;
+        visited.push_back(id);
+        auto *input = findAttribute(id);
+        if (input == nullptr) continue;
+        for (auto *observer = input->observers; observer != nullptr; observer = observer->next) {
+            auto *rule = findAttribute(observer->owner);
+            if (rule == nullptr || rule->updating) continue;
+            if (rule->hasValue) {
+                rule->type->vw_destroy(reinterpret_cast<swift::OpaqueValue *>(rule->storage));
+                rule->hasValue = false;
+            }
+            pending.push_back(rule->id);
+        }
+    }
 }
 
 OAGAttribute create_offset_attribute(OAGAttribute attribute, uint64_t offset, std::optional<uint64_t> size) {
@@ -153,7 +179,12 @@ void OAGGraphMutateAttribute(OAGAttribute attribute,
             entry->type->vw_destroy(reinterpret_cast<swift::OpaqueValue *>(entry->storage));
             entry->hasValue = false;
         }
+        invalidateObservers(entry);
+        const OAGGraphRef graph = entry->graph;
         pthread_mutex_unlock(&attributeLock);
+        if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+            graph->context.notify_invalidation(attribute);
+        }
     }
 }
 
@@ -307,7 +338,12 @@ bool OAGGraphSetValue(OAGAttribute attribute, const void *value, OAGTypeID type)
     else entry->type->vw_initializeWithCopy(destination, source);
     entry->hasValue = true;
     ++entry->generation;
+    invalidateObservers(entry);
+    const OAGGraphRef graph = entry->graph;
     pthread_mutex_unlock(&attributeLock);
+    if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+        graph->context.notify_invalidation(attribute);
+    }
     return true;
 }
 
@@ -353,7 +389,22 @@ void OAGGraphPrefetchValue(OAGAttribute attribute) {
 }
 
 void OAGGraphInvalidateValue(OAGAttribute attribute) {
-    // TODO
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    if (entry == nullptr) {
+        pthread_mutex_unlock(&attributeLock);
+        return;
+    }
+    if (entry->hasValue) {
+        entry->type->vw_destroy(reinterpret_cast<swift::OpaqueValue *>(entry->storage));
+        entry->hasValue = false;
+    }
+    invalidateObservers(entry);
+    const OAGGraphRef graph = entry->graph;
+    pthread_mutex_unlock(&attributeLock);
+    if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+        graph->context.notify_invalidation(attribute);
+    }
 }
 
 void OAGGraphVerifyType(OAGAttribute attribute, OAGTypeID type) {

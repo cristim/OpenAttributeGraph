@@ -73,6 +73,11 @@ public:
         void set_update_callback(ClosureFunction<void> update_callback) OAG_NOEXCEPT {
             _update_callback = update_callback;
         }
+
+        OAG_INLINE
+        void notify_invalidation(OAGAttribute attribute) const OAG_NOEXCEPT {
+            if (_invalidation_callback) _invalidation_callback(attribute);
+        }
         
         OAG_INLINE OAG_CONSTEXPR
         const bool isInvalid() const OAG_NOEXCEPT {
