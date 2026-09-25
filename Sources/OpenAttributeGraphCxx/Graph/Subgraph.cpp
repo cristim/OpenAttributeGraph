@@ -25,7 +25,8 @@ void OAG::Subgraph::apply(OAGAttributeFlags flags, OAG::ClosureFunction<void, OA
 
 OAG::Subgraph::Subgraph(OAG::SubgraphObject* cf_subgraph, OAG::Graph::Context& context, OAG::AttributeID):
 _cf_subgraph((OAGSubgraphRef)cf_subgraph), // FIXME
-_context((OAGGraphContextStorage &)context){
+_context((OAGGraphContextStorage &)context),
+_isInvalid(false) {
     // TODO
 }
 
