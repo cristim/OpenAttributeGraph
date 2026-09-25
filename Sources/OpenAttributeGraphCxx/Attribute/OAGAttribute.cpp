@@ -41,6 +41,7 @@ struct StoredAttribute {
     const OAG::swift::metadata *bodyType;
     bool updating;
     OAGAttribute parent;
+    OAGAttribute dependency;
     uint64_t offset;
     StoredAttribute *next;
 };
@@ -63,7 +64,7 @@ OAGAttribute create_offset_attribute(OAGAttribute attribute, uint64_t offset, st
         return OAGAttributeNil;
     }
     auto *entry = new StoredAttribute{nextAttributeID, nullptr, nullptr, false, 0,
-                                      nullptr, nullptr, false, attribute, offset, attributes};
+                                      nullptr, nullptr, false, attribute, OAGAttributeNil, offset, attributes};
     nextAttributeID += 4;
     attributes = entry;
     pthread_mutex_unlock(&attributeLock);
@@ -145,21 +146,33 @@ void OAGGraphMutateAttribute(OAGAttribute attribute,
 }
 
 OAGAttribute OAGGraphGetIndirectDependency(OAGAttribute attribute) {
-    // TODO
-    return OAGAttributeNil;
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    const OAGAttribute dependency = entry != nullptr ? entry->dependency : OAGAttributeNil;
+    pthread_mutex_unlock(&attributeLock);
+    return dependency;
 }
 
 void OAGGraphSetIndirectDependency(OAGAttribute attribute1, OAGAttribute attribute2) {
-    // TODO
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute1);
+    if (entry != nullptr) entry->dependency = attribute2;
+    pthread_mutex_unlock(&attributeLock);
 }
 
 OAGAttribute OAGGraphGetIndirectAttribute(OAGAttribute attribute) {
-    // TODO
-    return OAGAttributeNil;
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    const OAGAttribute source = entry != nullptr ? entry->parent : OAGAttributeNil;
+    pthread_mutex_unlock(&attributeLock);
+    return source;
 }
 
 void OAGGraphSetIndirectAttribute(OAGAttribute attribute1, OAGAttribute attribute2) {
-    // TODO
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute1);
+    if (entry != nullptr && entry->storage == nullptr) entry->parent = attribute2;
+    pthread_mutex_unlock(&attributeLock);
 }
 
 OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * value) {
@@ -192,7 +205,7 @@ OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * 
                                          reinterpret_cast<swift::OpaqueValue *>(const_cast<void *>(body)));
     }
     auto *entry = new StoredAttribute{0, type, storage, value != nullptr, isRule ? index : 0,
-                                      bodyStorage, bodyType, false, OAGAttributeNil, 0, nullptr};
+                                      bodyStorage, bodyType, false, OAGAttributeNil, OAGAttributeNil, 0, nullptr};
     pthread_mutex_lock(&attributeLock);
     entry->id = nextAttributeID;
     nextAttributeID += 4;
