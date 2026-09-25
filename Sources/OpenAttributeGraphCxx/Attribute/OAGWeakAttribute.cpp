@@ -5,16 +5,14 @@
 #include <OpenAttributeGraph/OAGWeakAttribute.h>
 
 OAGWeakAttribute OAGCreateWeakAttribute(OAGAttribute attribute) {
-    // TODO
-    return {OAGAttributeNil , 0};
+    return {{attribute, 0}};
 }
 
 OAGAttribute OAGWeakAttributeGetAttribute(OAGWeakAttribute weakAttribute) {
-    // TODO
-    return OAGAttributeNil;
+    return weakAttribute._details.identifier;
 }
 
 OAGWeakValue OAGGraphGetWeakValue(OAGWeakAttribute weakAttribute, OAGValueOptions options, OAGTypeID type) {
-    // TODO
-    return {nullptr, false};
+    const OAGValue value = OAGGraphGetValue(weakAttribute._details.identifier, options, type);
+    return {value.value, value.flags};
 }
