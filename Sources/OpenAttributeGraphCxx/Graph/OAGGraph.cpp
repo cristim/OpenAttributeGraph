@@ -6,6 +6,7 @@
 #include <OpenAttributeGraphCxx/Graph/Graph.hpp>
 #include <OpenAttributeGraphCxx/Misc/assert.hpp>
 #include <OpenAttributeGraphCxx/Data/ClosureFunction.hpp>
+#include <new>
 #include <pthread.h>
 
 OAGGraphRef OAGGraphCreate() {
@@ -28,13 +29,12 @@ OAGGraphRef OAGGraphCreateShared(OAGGraphRef storage) {
         graph = &storage->context.get_graph();
         //  [graph+0x10c] += 1
     }
-    // AG::Context(instance->graph, graph)
+    new (&instance->context) OAG::Graph::Context(*graph);
     
     //  [graph+0x10c] -= 1
 //    if ([graph+0x10c] == 0) {
 //        delete graph
 //    }
-    instance->context.setInvalid(false);
     return instance;
 }
 

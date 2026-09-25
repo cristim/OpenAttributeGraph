@@ -18,7 +18,11 @@ _graph(&graph),
 _context(nullptr),
 _id(OAGMakeUniqueID()),
 _invalidation_callback(nullptr),
-_update_callback(nullptr) {
+_update_callback(nullptr),
+unknown1(0),
+unknown2(0),
+unknown3(0),
+_isInvalid(false) {
     // TODO
 }
 
