@@ -3,6 +3,7 @@
 //  OpenAttributeGraphCxx
 
 #include <OpenAttributeGraph/OAGAttribute.h>
+#include <OpenAttributeGraph/OAGSubgraph.h>
 #include <OpenAttributeGraphCxx/Attribute/AttributeID.hpp>
 #include <OpenAttributeGraphCxx/Misc/assert.hpp>
 #include <OpenAttributeGraphCxx/Runtime/metadata.hpp>
@@ -31,6 +32,12 @@ bool OAGGraphCurrentAttributeWasModified(void) {
 }
 
 namespace {
+struct ObservedGeneration {
+    OAGAttribute owner;
+    uint64_t generation;
+    ObservedGeneration *next;
+};
+
 struct StoredAttribute {
     OAGAttribute id;
     const OAG::swift::metadata *type;
@@ -43,6 +50,10 @@ struct StoredAttribute {
     OAGAttribute parent;
     OAGAttribute dependency;
     uint64_t offset;
+    uint64_t generation;
+    ObservedGeneration *observers;
+    OAGSubgraphRef subgraph;
+    OAGGraphRef graph;
     StoredAttribute *next;
 };
 
@@ -64,7 +75,8 @@ OAGAttribute create_offset_attribute(OAGAttribute attribute, uint64_t offset, st
         return OAGAttributeNil;
     }
     auto *entry = new StoredAttribute{nextAttributeID, nullptr, nullptr, false, 0,
-                                      nullptr, nullptr, false, attribute, OAGAttributeNil, offset, attributes};
+                                      nullptr, nullptr, false, attribute, OAGAttributeNil, offset,
+                                      0, nullptr, nullptr, nullptr, attributes};
     nextAttributeID += 4;
     attributes = entry;
     pthread_mutex_unlock(&attributeLock);
@@ -204,8 +216,11 @@ OAGAttribute OAGGraphCreateAttribute(long index, const void *body, const void * 
         bodyType->vw_initializeWithCopy(reinterpret_cast<swift::OpaqueValue *>(bodyStorage),
                                          reinterpret_cast<swift::OpaqueValue *>(const_cast<void *>(body)));
     }
+    OAGSubgraphRef subgraph = OAGSubgraphGetCurrent();
+    OAGGraphRef graph = subgraph != nullptr ? OAGSubgraphGetGraph(subgraph) : nullptr;
     auto *entry = new StoredAttribute{0, type, storage, value != nullptr, isRule ? index : 0,
-                                      bodyStorage, bodyType, false, OAGAttributeNil, OAGAttributeNil, 0, nullptr};
+                                      bodyStorage, bodyType, false, OAGAttributeNil, OAGAttributeNil, 0,
+                                      value != nullptr ? 1u : 0u, nullptr, subgraph, graph, nullptr};
     pthread_mutex_lock(&attributeLock);
     entry->id = nextAttributeID;
     nextAttributeID += 4;
@@ -244,8 +259,22 @@ const OAGValue OAGGraphGetValue(OAGAttribute attribute, OAGValueOptions options,
     entry = findAttribute(attribute);
     const void *value = entry != nullptr && entry->hasValue &&
                         reinterpret_cast<OAGTypeID>(entry->type) == type ? entry->storage : nullptr;
+    OAGChangedValueFlags flags = static_cast<OAGChangedValueFlags>(0);
+    if (value != nullptr && updatingAttribute != OAGAttributeNil && updatingAttribute != attribute) {
+        auto **cursor = &entry->observers;
+        while (*cursor != nullptr && (*cursor)->owner != updatingAttribute) {
+            cursor = &(*cursor)->next;
+        }
+        if (*cursor == nullptr) {
+            *cursor = new ObservedGeneration{updatingAttribute, 0, nullptr};
+        }
+        if ((*cursor)->generation != entry->generation) {
+            (*cursor)->generation = entry->generation;
+            flags = OAGChangedValueFlagsChanged;
+        }
+    }
     pthread_mutex_unlock(&attributeLock);
-    return OAGValue { value, false };
+    return OAGValue { value, flags };
 }
 
 bool OAGGraphSetValue(OAGAttribute attribute, const void *value, OAGTypeID type) {
@@ -271,6 +300,7 @@ bool OAGGraphSetValue(OAGAttribute attribute, const void *value, OAGTypeID type)
     if (entry->hasValue) entry->type->vw_assignWithCopy(destination, source);
     else entry->type->vw_initializeWithCopy(destination, source);
     entry->hasValue = true;
+    ++entry->generation;
     pthread_mutex_unlock(&attributeLock);
     return true;
 }
@@ -325,8 +355,12 @@ void OAGGraphVerifyType(OAGAttribute attribute, OAGTypeID type) {
 }
 
 OAGGraphRef OAGGraphGetAttributeGraph(OAGAttribute attribute) {
-    // TODO
-    return nullptr;
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    const OAGGraphRef graph = entry != nullptr ? entry->graph : nullptr;
+    const OAGAttribute parent = entry != nullptr ? entry->parent : OAGAttributeNil;
+    pthread_mutex_unlock(&attributeLock);
+    return graph != nullptr || parent == OAGAttributeNil ? graph : OAGGraphGetAttributeGraph(parent);
 }
 
 OAGSubgraphRef OAGGraphGetAttributeSubgraph(OAGAttribute attribute) {
@@ -338,15 +372,12 @@ OAGSubgraphRef OAGGraphGetAttributeSubgraph(OAGAttribute attribute) {
 }
 
 _Nullable OAGSubgraphRef OAGGraphGetAttributeSubgraph2(OAGAttribute attribute) {
-    auto attribute_id = OAG::AttributeID(attribute);
-//    attribute_id.validate_data_offset();
-//    auto subgraph = attribute_id.subgraph();
-//    if (subgraph == nullptr) {
-//        OAG::precondition_failure("internal error");
-//    }
-//    return subgraph->to_cf();
-    // TODO
-    return nullptr;
+    pthread_mutex_lock(&attributeLock);
+    auto *entry = findAttribute(attribute);
+    const OAGSubgraphRef subgraph = entry != nullptr ? entry->subgraph : nullptr;
+    const OAGAttribute parent = entry != nullptr ? entry->parent : OAGAttributeNil;
+    pthread_mutex_unlock(&attributeLock);
+    return subgraph != nullptr || parent == OAGAttributeNil ? subgraph : OAGGraphGetAttributeSubgraph2(parent);
 }
 
 const void * OAGGraphReadCachedAttribute(long hashValue, OAGTypeID bodyType, const void *bodyPointer, OAGTypeID valueType, OAGCachedValueOptions options, OAGAttribute attribute, bool unknown) {
