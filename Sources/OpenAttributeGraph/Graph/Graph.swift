@@ -15,8 +15,8 @@ extension Graph {
         flags: _AttributeType.Flags,
         update: AttributeUpdateBlock
     ) -> Int {
-        // TODO: __AGGraphInternAttributeType
-        0
+        // The C++ attribute store uses the value metadata as its type key.
+        Int(bitPattern: valueType.rawValue)
     }
 }
 
