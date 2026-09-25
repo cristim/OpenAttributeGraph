@@ -182,7 +182,7 @@ void OAGGraphMutateAttribute(OAGAttribute attribute,
         invalidateObservers(entry);
         const OAGGraphRef graph = entry->graph;
         pthread_mutex_unlock(&attributeLock);
-        if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+        if (graph != nullptr && !graph->context.isInvalid() && updatingAttribute == OAGAttributeNil) {
             graph->context.notify_invalidation(attribute);
         }
     }
@@ -341,7 +341,7 @@ bool OAGGraphSetValue(OAGAttribute attribute, const void *value, OAGTypeID type)
     invalidateObservers(entry);
     const OAGGraphRef graph = entry->graph;
     pthread_mutex_unlock(&attributeLock);
-    if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+    if (graph != nullptr && !graph->context.isInvalid() && updatingAttribute == OAGAttributeNil) {
         graph->context.notify_invalidation(attribute);
     }
     return true;
@@ -402,7 +402,7 @@ void OAGGraphInvalidateValue(OAGAttribute attribute) {
     invalidateObservers(entry);
     const OAGGraphRef graph = entry->graph;
     pthread_mutex_unlock(&attributeLock);
-    if (graph != nullptr && updatingAttribute == OAGAttributeNil) {
+    if (graph != nullptr && !graph->context.isInvalid() && updatingAttribute == OAGAttributeNil) {
         graph->context.notify_invalidation(attribute);
     }
 }

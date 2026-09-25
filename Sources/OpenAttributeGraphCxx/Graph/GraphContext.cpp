@@ -30,12 +30,12 @@ _isInvalid(false) {
 }
 
 OAG::Graph::Context::~Context() OAG_NOEXCEPT {
-    if (_invalidation_callback.context() != nullptr) {
-        swift_release(const_cast<void *>(_invalidation_callback.context()));
-    }
-    if (_update_callback.context() != nullptr) {
-        swift_release(const_cast<void *>(_update_callback.context()));
-    }
+    const void *invalidation = _invalidation_callback.context();
+    const void *update = _update_callback.context();
+    _invalidation_callback = nullptr;
+    _update_callback = nullptr;
+    if (invalidation != nullptr) swift_release(const_cast<void *>(invalidation));
+    if (update != nullptr) swift_release(const_cast<void *>(update));
 }
 
 void OAG::Graph::Context::set_invalidation_callback(

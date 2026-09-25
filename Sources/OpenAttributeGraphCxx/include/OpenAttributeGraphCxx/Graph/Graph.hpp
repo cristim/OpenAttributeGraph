@@ -64,7 +64,6 @@ public:
             _context = context;
         }
         
-        OAG_INLINE
         void set_invalidation_callback(ClosureFunction<void, OAGAttribute> invalidation_callback) OAG_NOEXCEPT;
         
         void set_update_callback(ClosureFunction<void> update_callback) OAG_NOEXCEPT;
