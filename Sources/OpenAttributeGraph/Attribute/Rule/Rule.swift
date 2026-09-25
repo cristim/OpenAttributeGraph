@@ -101,15 +101,10 @@ extension Rule where Self: Hashable {
         options: OAGCachedValueOptions = [],
         owner: AnyAttribute?
     ) -> Value {
-        withUnsafePointer(to: self) { pointer in
-            Self._cachedValue(
-                options: options,
-                owner: owner,
-                hashValue: hashValue,
-                bodyPtr: pointer,
-                update: { Self._update }
-            ).pointee
-        }
+        // A cached graph node is not available until cached attributes are
+        // implemented in the graph runtime. Evaluate the rule to supply the
+        // correct value to callers in the meantime.
+        value
     }
 
     public func cachedValueIfExists(

@@ -257,8 +257,14 @@ const OAGValue OAGGraphGetValue(OAGAttribute attribute, OAGValueOptions options,
     }
     pthread_mutex_lock(&attributeLock);
     entry = findAttribute(attribute);
-    const void *value = entry != nullptr && entry->hasValue &&
-                        reinterpret_cast<OAGTypeID>(entry->type) == type ? entry->storage : nullptr;
+    // Attribute.unsafeBitCast intentionally reads a single-field wrapper using the
+    // field's metadata (for example ReferenceDateModifier as Date?). Keep the
+    // allocation bound even when the metadata identities differ.
+    const auto *requestedType = reinterpret_cast<const OAG::swift::metadata *>(type);
+    const bool compatibleType = entry != nullptr && requestedType != nullptr &&
+        (entry->type == requestedType ||
+         requestedType->getValueWitnesses()->getStride() <= entry->type->getValueWitnesses()->getStride());
+    const void *value = entry != nullptr && entry->hasValue && compatibleType ? entry->storage : nullptr;
     OAGChangedValueFlags flags = static_cast<OAGChangedValueFlags>(0);
     if (value != nullptr && updatingAttribute != OAGAttributeNil && updatingAttribute != attribute) {
         auto **cursor = &entry->observers;
