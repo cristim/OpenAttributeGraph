@@ -58,6 +58,11 @@ public:
     bool operator!=(std::nullptr_t) const OAG_NOEXCEPT {
         return _function != nullptr;
     }
+
+    OAG_INLINE OAG_CONSTEXPR
+    Context context() const OAG_NOEXCEPT {
+        return _context;
+    }
     
     OAG_INLINE OAG_CONSTEXPR
     const ReturnType operator()(Args... args) const OAG_NOEXCEPT {

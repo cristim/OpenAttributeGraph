@@ -65,14 +65,9 @@ public:
         }
         
         OAG_INLINE
-        void set_invalidation_callback(ClosureFunction<void, OAGAttribute> invalidation_callback) OAG_NOEXCEPT {
-            _invalidation_callback = invalidation_callback;
-        }
+        void set_invalidation_callback(ClosureFunction<void, OAGAttribute> invalidation_callback) OAG_NOEXCEPT;
         
-        OAG_INLINE
-        void set_update_callback(ClosureFunction<void> update_callback) OAG_NOEXCEPT {
-            _update_callback = update_callback;
-        }
+        void set_update_callback(ClosureFunction<void> update_callback) OAG_NOEXCEPT;
 
         OAG_INLINE
         void notify_invalidation(OAGAttribute attribute) const OAG_NOEXCEPT {
