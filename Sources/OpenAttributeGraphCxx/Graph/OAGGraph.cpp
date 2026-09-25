@@ -114,7 +114,7 @@ OAGGraphContextRef OAGGraphGetGraphContext(OAGGraphRef graph) {
     if (graph->context.isInvalid()) {
         OAG::precondition_failure("invalidated graph");
     }
-    return reinterpret_cast<OAGGraphContextRef>(reinterpret_cast<uintptr_t>(graph) + sizeof(CFRuntimeBase));
+    return reinterpret_cast<OAGGraphContextRef>(graph);
 }
 
 void OAGGraphInvalidate(OAGGraphRef graph) {

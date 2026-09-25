@@ -74,14 +74,14 @@ public:
     
     // MARK: - Getter and setter
     
-    OAG_INLINE OAG_CONSTEXPR
+    OAG_INLINE
     const OAGGraphContextRef get_context() const OAG_NOEXCEPT {
-        return &_context;
+        return reinterpret_cast<OAGGraphContextRef>(reinterpret_cast<uintptr_t>(&_context) - sizeof(CFRuntimeBase));
     }
     
-    OAG_INLINE OAG_CONSTEXPR
+    OAG_INLINE
     OAGGraphContextRef get_context() OAG_NOEXCEPT {
-        return &_context;
+        return reinterpret_cast<OAGGraphContextRef>(reinterpret_cast<uintptr_t>(&_context) - sizeof(CFRuntimeBase));
     }
     
     OAG_INLINE OAG_CONSTEXPR

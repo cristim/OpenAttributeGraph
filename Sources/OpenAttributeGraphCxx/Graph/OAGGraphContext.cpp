@@ -6,5 +6,5 @@
 #include <OpenAttributeGraph/Private/CFRuntime.h>
 
 OAGGraphRef OAGGraphContextGetGraph(OAGGraphContextRef context) {
-    return reinterpret_cast<OAGGraphRef>(reinterpret_cast<uintptr_t>(context) - sizeof(CFRuntimeBase));
+    return reinterpret_cast<OAGGraphRef>(context);
 }
