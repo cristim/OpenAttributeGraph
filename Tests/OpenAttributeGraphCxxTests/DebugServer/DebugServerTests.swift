@@ -2,7 +2,7 @@
 //  DebugServerTests.swift
 //  OpenAttributeGraphCxxTests
 
-#if canImport(Darwin)
+#if canImport(Darwin) && canImport(Network)
 import Foundation
 import OpenAttributeGraphCxx_Private.DebugServer
 import Testing
